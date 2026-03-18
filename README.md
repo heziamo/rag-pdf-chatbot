@@ -27,21 +27,20 @@
 ## 🚀 快速开始
 
 ### 1. 克隆项目
-```bash
 git clone https://github.com/你的用户名/rag-pdf-chatbot.git
 cd rag-pdf-chatbot
-2. 创建虚拟环境并安装依赖
+### 2. 创建虚拟环境并安装依赖
 Bashpython -m venv venv
 venv\Scripts\activate     # Windows
 pip install -r requirements.txt
-3. 启动 Ollama 服务
+###3. 启动 Ollama 服务
 Bashollama serve
 # 新终端
 ollama pull qwen:8b        # 或你使用的模型
-4. 放入 PDF 并构建向量库
+###4. 放入 PDF 并构建向量库
 Bash# 把 attention.pdf 等论文放入 data/ 文件夹
 python ingest.py
-5. 启动 Web 界面
+###5. 启动 Web 界面
 Bashstreamlit run app.py
 📁 项目结构
 textrag-pdf-chatbot/
