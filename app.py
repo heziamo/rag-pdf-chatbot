@@ -1,85 +1,86 @@
 import streamlit as st
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.llms import Ollama
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
+import os
+from dotenv import load_dotenv
+from src.ingest import process_and_store_pdf
+from src.chat import get_answer_from_milvus
 
-st.set_page_config(page_title="RAG PDF 问答机器人", page_icon="📚", layout="wide")
+# 加载环境变量 (API Key)
+load_dotenv()
 
-st.title("📚 RAG PDF 问答机器人")
-st.markdown("**技术栈**：LangChain + Ollama (qwen3) + Chroma | 纯本地运行 | 面试展示项目")
+# 1. 页面配置 (设置标题、图标和宽屏模式)
+st.set_page_config(page_title="企业级 RAG 知识库", page_icon="🤖", layout="wide")
 
+st.title("🤖 企业级 RAG 智能助手")
+st.markdown("基于 **Milvus** 向量数据库与 **Unstructured** 智能解析构建")
 
-# ====================== 加载向量数据库 ======================
-@st.cache_resource
-def get_vectorstore():
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
-        model_kwargs={'device': 'cpu'}
-    )
-    return Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+# 2. 初始化聊天历史记录
+# Streamlit 会在每次交互时重新运行代码，所以我们需要用 session_state 来保存聊天记录
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-
-vectorstore = get_vectorstore()
-retriever = vectorstore.as_retriever(search_kwargs={"k": 6})  # 增加到6个片段
-
-# ====================== LLM ======================
-llm = Ollama(model="qwen3:8b", temperature=0.6)  # ← 请确认你的模型名，如果是 qwen2.5:7b-instruct 请修改
-
-# ====================== 优化后的 Prompt（重点） ======================
-template = """你是一个清晰、专业、善于讲解的AI助手。
-请基于下面提供的上下文，用**自然流畅的中文**回答用户的问题。
-回答时要条理清晰、重点突出，可以适当举例或对比说明。
-如果上下文无法回答，请直接说“根据当前文档我无法确定答案”。
-
-上下文：
-{context}
-
-问题：{question}
-
-回答："""
-
-prompt = ChatPromptTemplate.from_template(template)
-
-
-def format_docs(docs):
-    return "\n\n".join([f"片段{i + 1}: {doc.page_content}" for i, doc in enumerate(docs)])
-
-
-rag_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-)
-
-# ====================== 界面 ======================
+# 3. 侧边栏：文档上传与数据入库管理
 with st.sidebar:
-    st.header("项目信息")
-    st.write("已加载 15 个 PDF，共 93 个文本片段")
-    if st.button("🔄 重新构建向量数据库"):
-        st.info("请在终端运行：python ingest.py")
+    st.header("📄 知识库管理")
+    uploaded_file = st.file_uploader("上传 PDF 文档", type=["pdf"])
 
-question = st.text_input("💬 请输入你的问题：",
-                         placeholder="例如：什么是注意力机制？Transformer有哪些创新点？")
+    if st.button("处理并入库 (ETL)"):
+        if uploaded_file is not None:
+            with st.spinner("正在使用 Unstructured 解析文档并存入 Milvus..."):
+                # 确保 data 目录存在
+                os.makedirs("./data", exist_ok=True)
 
-if st.button("🚀 获取答案", type="primary"):
-    if question.strip():
-        with st.spinner("正在检索文档并思考..."):
-            answer = rag_chain.invoke(question)
+                # 将前端上传的文件保存到本地 data 目录
+                temp_pdf_path = os.path.join("./data", uploaded_file.name)
+                with open(temp_pdf_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
 
-        st.markdown("### ✅ 回答：")
-        st.markdown(answer)
+                # 调用我们之前写的入库逻辑！
+                try:
+                    process_and_store_pdf(temp_pdf_path)
+                    st.success("入库成功！现在您可以开始提问了。")
+                except Exception as e:
+                    st.error(f"处理失败: {e}")
+        else:
+            st.warning("请先点击上方按钮上传 PDF 文件。")
 
-        with st.expander("🔍 查看本次检索到的文档片段（面试讲解用）"):
-            docs = retriever.invoke(question)
-            for i, doc in enumerate(docs, 1):
-                st.write(f"**片段 {i}**")
-                st.caption(doc.page_content[:500] + "...")
-                st.divider()
-    else:
-        st.warning("请输入问题")
+    st.divider()
+    st.markdown("### 系统架构说明")
+    st.markdown("- **解析引擎**: Unstructured")
+    st.markdown("- **向量引擎**: Milvus Lite")
+    st.markdown("- **大语言模型**: OpenAI GPT-4o-mini")
 
-st.caption("💡 使用建议：把 PDF 放入 data 文件夹 → 运行 ingest.py → 提问")
+# 4. 主聊天界面：渲染历史消息
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# 5. 处理用户输入
+# st.chat_input 会在页面底部生成一个固定输入框
+if prompt := st.chat_input("请输入您的问题，例如：这份文档的核心结论是什么？"):
+
+    # 将用户问题存入历史记录并显示在界面上
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # 助手开始思考并生成回答
+    with st.chat_message("assistant"):
+        with st.spinner("正在检索企业知识库..."):
+            try:
+                # 调用我们之前写的检索逻辑！
+                answer, context = get_answer_from_milvus(prompt)
+
+                # 显示生成的回答
+                st.markdown(answer)
+
+                # 面试加分项：使用折叠面板 (Expander) 优雅地展示参考文档片段
+                with st.expander("👀 查看底层检索到的文档片段 (Source Context)"):
+                    for i, doc in enumerate(context):
+                        st.markdown(f"**片段 {i + 1}**: {doc.page_content[:200]}...")
+
+                # 将助手的回答存入历史记录
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+
+            except Exception as e:
+                st.error("无法获取回答。请确保您已经先在左侧侧边栏上传并处理了文档。")
+                st.error(f"详细错误: {e}")
