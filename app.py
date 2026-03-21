@@ -47,7 +47,7 @@ with st.sidebar:
     st.markdown("### 系统架构说明")
     st.markdown("- **解析引擎**: Unstructured")
     st.markdown("- **向量引擎**: Milvus Lite")
-    st.markdown("- **大语言模型**: OpenAI GPT-4o-mini")
+    st.markdown("- **大语言模型**: OpenAI deepseek-chat")
 
 # 4. 主聊天界面：渲染历史消息
 for message in st.session_state.messages:
