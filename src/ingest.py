@@ -1,9 +1,24 @@
+import pytesseract
 import os
+tesseract_exe = r"D:\tesseract\tesseract.exe"
 from langchain_unstructured import UnstructuredLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_milvus import Milvus
 
+if not os.path.exists(tesseract_exe):
+    raise FileNotFoundError(f"找不到 tesseract.exe，请检查路径：{tesseract_exe}")
+
+pytesseract.pytesseract.tesseract_cmd = tesseract_exe
+
+print("已强制指定 Tesseract 路径：", pytesseract.pytesseract.tesseract_cmd)
+print("Tesseract 版本：", pytesseract.get_tesseract_version())
+
+print("Tesseract 配置目录 (TESSDATA_PREFIX)：", os.environ.get("TESSDATA_PREFIX", "未设置"))
+
+# 如果你有自定义 tessdata 路径，可以手动指定
+os.environ["TESSDATA_PREFIX"] = r"D:\tesseract\tessdata"  # ← 改成你实际的 tessdata 文件夹路径
+print("已手动设置 TESSDATA_PREFIX 为：", os.environ["TESSDATA_PREFIX"])
 
 def process_and_store_pdf(file_path: str, collection_name: str = "rag_pdf_collection"):
     # 1. 使用本地 Unstructured hi_res 模式解析（支持表格结构化提取）
@@ -19,7 +34,7 @@ def process_and_store_pdf(file_path: str, collection_name: str = "rag_pdf_collec
 
     # 2. 过滤：只保留普通文字 + 表格，丢弃图片/图表/其他不需要的元素
     refined_docs = []
-    kept_categories = {"NarrativeText", "ListItem", "Title", "Table"}  # 可以根据需要再加 "UncategorizedText" 等
+    kept_categories = {"NarrativeText", "ListItem", "Title", "Table", "Text", "UncategorizedText"}  # 可以根据需要再加 "UncategorizedText" 等
 
     for doc in docs:
         category = doc.metadata.get("category", "")
@@ -38,8 +53,8 @@ def process_and_store_pdf(file_path: str, collection_name: str = "rag_pdf_collec
             refined_docs.append(doc)
 
         # 可选：打印被丢弃的元素，便于调试
-        # else:
-        #     print(f"丢弃: {category} → {doc.page_content[:60]}...")
+        else:
+            print(f"丢弃: {category} → {doc.page_content[:60]}...")
 
     print(f"提取到 {len(refined_docs)} 个有效元素（文字 + 表格），将进行向量化存储")
 
@@ -55,7 +70,7 @@ def process_and_store_pdf(file_path: str, collection_name: str = "rag_pdf_collec
     chunks = text_splitter.split_documents(refined_docs)
 
     # 4. Embedding + 存 Milvus（保持原样）
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = HuggingFaceEmbeddings(model_name="models--sentence-transformers--all-MiniLM-L6-v2")
 
     MILVUS_URI = "http://localhost:19530"
     print(f"连接 Milvus: {MILVUS_URI} ...")
