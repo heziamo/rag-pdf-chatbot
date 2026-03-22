@@ -1,68 +1,61 @@
-# 📚 RAG PDF 问答机器人
+# 🚀 DeepSeek-Milvus-PDF-RAG
 
-一个**纯本地**运行的 RAG（Retrieval-Augmented Generation）项目，基于经典论文《Attention Is All You Need》实现 PDF 智能问答。
+一个基于 **DeepSeek-V3/R1** 和 **Milvus** 构建的高精度 PDF 对话机器人。支持本地 OCR 识别与复杂的表格结构化解析。
 
-适合作为**大模型/LLM/RAG方向实习面试**的项目作品。
+## 🌟 项目亮点
+- **表格高保真**：采用 `Unstructured` 的 `hi_res` 策略，将 PDF 表格转化为 HTML 喂给 DeepSeek，保留行列关系。
+- **全本地解析**：集成 Tesseract OCR 和 Poppler，支持扫描件解析，数据不流向第三方解析平台。
+- **向量存储**：使用 Docker 部署的 Milvus Standalone，具备企业级检索性能。
 
-![界面预览](screenshot.png)   <!-- 后面你可以自己截图放进去 -->
+## 🏗️ 系统架构
 
-## ✨ 项目亮点
+graph TD
+    User((用户)) -->|上传PDF / 提问| UI[Streamlit 界面]
+    
+    subgraph "数据解析层"
+        UI -->|文件| Loader[Unstructured + Tesseract]
+        Loader -->|表格提取| Table[HTML 结构化表格]
+        Loader -->|文本提取| Text[清洗后的文本]
+    end
 
-- 完全本地化运行（无需 OpenAI API Key）
-- 使用 Ollama + Qwen3 + LangChain 最新 LCEL 语法
-- 支持任意 PDF 文档，只需放入 `data/` 文件夹即可
-- 基于 Chroma 向量数据库，检索效率高
-- Streamlit 美观前端，交互友好
-- 代码结构清晰，适合面试讲解
+    subgraph "存储与检索"
+        Table & Text -->|Embedding| Milvus[(Milvus 向量库)]
+    end
 
-## 🛠 技术栈
+    subgraph "大脑推理"
+        UI -->|查询| Chain[LangChain 检索链]
+        Milvus -->|背景知识| Chain
+        Chain -->|Prompt| LLM[DeepSeek API]
+        LLM -->|回答| UI
+    end
+##🛠️ 环境准备
+1. 软件依赖 (Windows)
+Tesseract OCR: 安装地址，需下载 chi_sim 语言包。
 
-- **LLM**：Ollama (qwen:8b / qwen2.5:7b-instruct)
-- **框架**：LangChain + LangChain-Community
-- **向量数据库**：Chroma
-- **嵌入模型**：sentence-transformers/all-MiniLM-L6-v2
-- **前端**：Streamlit
-- **文档加载**：PyPDF
+Poppler: 下载地址，解压并记录 bin 路径。
 
-## 🚀 快速开始
+Docker Desktop: 用于运行 Milvus。
 
-### 1. 克隆项目
-git clone https://github.com/你的用户名/rag-pdf-chatbot.git
-cd rag-pdf-chatbot
-### 2. 创建虚拟环境并安装依赖
-Bashpython -m venv venv
-venv\Scripts\activate     # Windows
+2. 启动 Milvus
+Bash
+# 在项目目录下运行 (确保已下载 milvus 的 docker-compose.yml)
+docker-compose up -d
+##🚀 快速开始
+1. 安装 Python 依赖
+Bash
 pip install -r requirements.txt
-### 3. 启动 Ollama 服务
-Bashollama serve
-# 新终端
-ollama pull qwen:8b        # 或你使用的模型
-### 4. 放入 PDF 并构建向量库
-Bash# 把 attention.pdf 等论文放入 data/ 文件夹
-python ingest.py
-### 5. 启动 Web 界面
-Bashstreamlit run app.py
-📁 项目结构
-textrag-pdf-chatbot/
-├── data/                 # 放入你的PDF文件
-├── chroma_db/            # 向量数据库（自动生成）
-├── app.py                # Streamlit 前端主程序
-├── ingest.py             # 构建向量数据库
-├── README.md
-├── requirements.txt
-└── .gitignore
-🎯 面试可讲解的知识点
+2. 配置环境变量 (.env)
+在项目根目录新建 .env 文件，填入以下内容：
 
-RAG 的工作原理（Retrieval + Generation）
-Chunk Size 与 Overlap 的权衡
-为什么选择本地嵌入模型而非 OpenAI embeddings
-LangChain LCEL 链式调用写法
-自注意力机制（结合论文内容）
-如何解决幻觉问题（Hallucination）
+Code snippet
+DEEPSEEK_API_KEY=你的API密钥
+MILVUS_URI=http://localhost:19530
+TESSERACT_PATH=D:\tesseract\tesseract.exe
+TESSDATA_PREFIX=D:\tesseract\tessdata
+3. 运行应用
+Bash
+streamlit run app.py
+📝 注意事项
+中文路径优化：代码已自动处理 Windows 中文用户名导致的临时文件报错。
 
-后续可扩展方向
-
-支持多文件对话 + 历史记录
-添加网页URL加载
-使用更强的本地模型（qwen2.5:14b 等）
-部署到 Docker
+解析速度：由于开启了 hi_res 表格识别，解析 10 页以上的 PDF 可能需要较长时间。
